@@ -32,6 +32,31 @@ Additional data should be downloaded from other public sources.
 └── ...
 ```
 
+This repository contains part of the data that are necessary to reproduce the results.
+In particular:
+
+#### The network
+
+The files `./data/graph_edges.geojson` and `./data/graph_nodes_metadata.geojson` contains the edges and the nodes of the network in `geojson` format.
+In particular, the edge file is just a list of `LineString`s describing the shape of each line, with `source` and `target` nodes.
+The node file is a list of `Point`s (stations) with the following metadata:
+
+- `index`: the name of the node
+- `osm_name`: the name as reported by OpenStreetMap
+- `region`: the region in which the station is located
+- `pop`: the population associated to the station
+- `delay_q10`: delays experienced by each station (10% percentile)
+- `delay_q50`: delays experienced by each station (50% percentile)
+- `delay_q90`: delays experienced by each station (90% percentile)
+- `delay_mean`: mean delays experienced by each station
+- `capacity`: the maximum number of trains going through a station in one hour
+- `rain`: average rain at each station
+
+#### The dynamics and perturbations
+
+`./data/aggregate_transitions_learn_ita.csv.gz` and `./data/delays_per_stations_YYYY.csv.gz` contains aggregated dynamics and train delays.
+The former contains the `count` times one train has gone through the line between `start` and `end` in the given `month`, `weekday` and `hour`.
+The latter contains the cumulative real delay experienced each day by each station.
 
 ## Additional data
 
