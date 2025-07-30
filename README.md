@@ -20,12 +20,30 @@ To ease your task, you can use a [Copernicus helper](https://github.com/maurofac
 
 ### Model validation
 
-Use:
+Usage:
 
 ```
 ./code_validation.py
 ```
 
-Warnings: it will take approx 30 minutes in a 10 cores 16 GB RAM laptop.
+Warnings: it will take approx a couple of hours in a 10 cores 16 GB RAM laptop.
+
+### Perturbability
+
+Usage:
+
+```
+./code_coverage.py
+./code_coverage_plot.py
+```
 
 ### Steady state
+
+Usage:
+
+```
+./code_steady_state.py
+./code_steady_state_plot.py
+```
+
+Warning: Before running this you should run both the scripts for computing the perturbability.
