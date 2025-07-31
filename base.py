@@ -169,17 +169,6 @@ def sim(
     # Get the date
     day = model.ex_field.trange()[0]
 
-    # Prepare cache for the rain.
-    cache = TCACHE / "rain_cache"
-    cache.mkdir(parents=True, exist_ok=True)
-
-    raincache = cache / f"rain_cache_{day.isoformat()[:10]}.csv.gz"
-    if raincache.is_file() and usecache:
-        event_cache = pd.read_csv(raincache, index_col=0)
-        event_cache.columns = [pd.Timestamp(c) for c in event_cache.columns]
-    else:
-        event_cache = {}
-
     node_capacity = model.graph.nodes()["capacity"].to_numpy()
     _full_graph = full_graph.subset(
         [("weekday", day.day_of_week == 6), ("month", day.month == 8)]
@@ -190,23 +179,25 @@ def sim(
         hour = ev_hour.trange()[0]
 
         if hour not in LOC_CACHE:
+            # We cache the results in the eventuality that one has to perform several time the same computation.
             if cached is not None and "rain" in cached:
                 integral = cached["rain"]
             else:
                 integral = None
-            ggg = _full_graph.subset([("hour", hour.hour)])
-            ggg = ggg.drop_duplicates()
-            LOC_CACHE[hour] = generated_delay(
-                ggg,
+            hourly_graph = _full_graph.subset([("hour", hour.hour)]).drop_duplicates()
+            _delays_ = generated_delay(
+                hourly_graph,
                 ev_hour,
                 trange=hour,
                 weight="count",
                 integral=integral,
             )
+            if usecache:
+                LOC_CACHE[hour] = _delays_
         else:
-            print("Using cache.")
+            _delays_ = LOC_CACHE[hour]
         model.evolve()
-        model.generate(LOC_CACHE[hour], "beta")
+        model.generate(_delays_, "beta")
         model.generate(-node_capacity, "gamma")
         model.conclude_step(hour.to_datetime64(), threshold=0.0, keep_cascade=False)
 
@@ -220,10 +211,6 @@ def sim(
         .rename(columns={"level_0": "node", "level_1": "time", 0: "value"})
     )
 
-    if not raincache.is_file() and usecache:
-        pd.DataFrame(event_cache, index=model.graph.nodes().index).to_csv(raincache)
-
-    # Return the first and only cascade.
     return states
 
 
@@ -269,3 +256,14 @@ def add_axis_label(ax, text: str):
         fontweight="bold",
         ha="right",
     )
+
+
+def shorten_name(text: str) -> str:
+    parts = text.split()
+    if parts[0] in {"san"}:
+        return (
+            " ".join(parts[:2]).title()
+            + " "
+            + "".join([s[0].title() for s in parts[2:]])
+        )
+    return parts[0].title() + " " + "".join([s[0].title() for s in parts[1:]])

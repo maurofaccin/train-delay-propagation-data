@@ -31,14 +31,14 @@ print("Loaded Graphs")
 # %%
 
 pars = base.params()
+print("Model parameters:")
 print(pars)
-peaks = base.load_peaks(2024, kind="full")
 
+peaks = base.load_peaks(2024, kind="full")
 baseline = base.load_nodes()["delay_q50"].sort_index()
 
 delay = (base.load_real_delay(2024) - baseline).clip(lower=0)
 delay = delay.loc[peaks.index]
-print(delay)
 
 # %%
 
@@ -62,6 +62,7 @@ def simulate(pars: dict[str, float], peaks: pd.DataFrame, **kwargs):
                                 weight="count",
                             ),
                             GRAPH_TMP,
+                            False,  # I don't need to cache the results
                         )
                         for peak_day in peaks.index
                     ],
@@ -78,29 +79,6 @@ def simulate(pars: dict[str, float], peaks: pd.DataFrame, **kwargs):
 delays = simulate(pars, peaks)
 delays["time"] = pd.DatetimeIndex(delays["time"])
 
-
-# %%
-
-from time import time
-
-base.LOC_CACHE = {}
-ef = base.load_extfield(2024)
-
-a = time()
-tmp = base.sim(
-    Diffusion(
-        GRAPH_ADJ,
-        ef.get(day="2024-09-09"),
-        alpha=pars["alpha"],
-        beta=pars["beta"],
-        gamma=pars["gamma"],
-        weight="count",
-    ),
-    GRAPH_TMP,
-)
-print(time() - a)
-print(tmp)
-print(tmp.value.sum())
 
 # %%
 
@@ -265,7 +243,7 @@ def plot_all_days(results: pd.DataFrame):
                 marker="o",
                 markersize=np.sqrt(x / 3 + 10),
                 lw=0,
-                color=scttr.cmap(x / results["rain"].max()),
+                color=tuple(scttr.cmap(x / results["rain"].max())),
                 label=f"{x} mm",
                 alpha=0.5,
                 mew=0.1,
@@ -355,7 +333,7 @@ def plot_multi_days(isodays: list[str]):
     )
 
     for _axss, _axs, isoday in zip(axss, axs, isodays):
-        _plot_one_day(isoday, *_axss, _axs)
+        _plot_one_day(isoday, _axss[0], _axss[1], _axss[2], _axs)
         _axss[2].set(xlabel="", ylabel="")
         _axss[0].set_ylabel(isoday, fontsize="large")
 
@@ -406,14 +384,16 @@ def _plot_one_day(isoday: str, ax_real, ax_pred, ax_stress, ax_scat):
     ax_real.scatter(
         day["geometry"].x,
         day["geometry"].y,
-        s=lin_map(day["real"], (0, 100), (0, 30)),
+        s=lin_map(day.loc[:, "real"], (0, 100), (0, 30)),
         c=day["rain"],
         **kwargs,
     )
     ax_pred.scatter(
         day["geometry"].x,
         day["geometry"].y,
-        s=lin_map(day["value"], (0, 200), (0, 30)) if day["value"].max() > 0 else 0,
+        s=lin_map(day.loc[:, "value"], (0, 200), (0, 30))
+        if day["value"].max() > 0
+        else 0,
         c=day["rain"],
         **kwargs,
     )
@@ -502,17 +482,6 @@ def lin_map(vals: np.ndarray | pd.Series, p1: tuple, p2: tuple) -> np.ndarray:
 
 def main() -> None:
     """Do the main."""
-    # daily_d = (
-    #     delays.drop(columns=["failing", "node"])
-    #     .set_index("time", drop=True)
-    #     .groupby(pd.Grouper(freq="1D"))
-    #     .sum()
-    #     .dropna(axis=0, how="all")
-    # )
-
-    # res = pd.concat([daily_d, delay.sum(1).rename("real"), peaks], axis=1).fillna(0)
-    # plot_all_days(res)
-
     plot_multi_days(["2024-10-03", "2024-09-09"])
     for isoday in [
         "2024-02-27",
@@ -534,15 +503,14 @@ def _get_one_day(isoday: str) -> tuple[pd.DataFrame, xarray.DataArray]:
     print(isoday)
     try:
         daily_d = (
-            delays.drop(columns=["failing"])
-            .set_index("time", drop=True)
+            delays.set_index("time", drop=True)
             .groupby([pd.Grouper(freq="1D"), "node"])
             .sum()
             .dropna(axis=0, how="all")
             .loc[isoday]
         )
     except KeyError:
-        daily_d = pd.DataFrame([], columns=["value"])
+        daily_d = pd.DataFrame([], columns=pd.Index(["value"]))
     raindata = base.load_extfield(2024).data.sel(time=isoday)
     raindata = raindata.sum(dim="time")
     nodes = base.load_nodes()
