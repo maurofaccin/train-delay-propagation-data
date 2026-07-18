@@ -7,6 +7,7 @@ How much an external perturbation on one node influence other nodes.
 3. Compute also the steady state
 """
 
+import json
 from pathlib import Path
 
 import geopandas as geopd
@@ -21,8 +22,13 @@ import diffsys
 from diffsys.models import Diffusion
 
 # %%
-graph_adj = base.load_graph(full=False).drop_duplicates()
-graph_tmp = base.load_graph(full=True)
+graph_adj = base.load_graph(
+    full=False, days=pd.date_range("2021-01-01", "2023-12-31").to_flat_index()
+).drop_duplicates()
+graph_tmp = base.load_graph(
+    full=True, days=pd.date_range("2021-01-01", "2023-12-31").to_flat_index()
+)
+LOC_CACHE = {}
 
 
 def exfield_like(exfiel: diffsys.ExternalField, fill_values: float):
@@ -36,7 +42,7 @@ def exfield_like(exfiel: diffsys.ExternalField, fill_values: float):
 # %%
 
 
-def get_stress(graph, exf, trange, rain):
+def get_stress(exf, rain):
     global graph_adj
     graph = graph_tmp.subset([("weekday", False), ("month", False), ("hour", 8)])
     stressor = base.generated_delay(
@@ -49,8 +55,7 @@ def get_stress(graph, exf, trange, rain):
 
 
 def sim_all(
-    data: tuple[diffsys.ExternalField, pd.Series, dict],
-    fname: str | Path | None = None,
+    data: tuple[diffsys.ExternalField, pd.Series, dict], fname: str | Path | None = None
 ) -> geopd.GeoDataFrame:
     global graph_adj
     global graph_tmp
@@ -65,7 +70,7 @@ def sim_all(
     delta = np.inf
     state = np.zeros(graph.nn)
 
-    loc_stressor, capacity = get_stress(graph, exf, exf.trange()[0], rain)
+    loc_stressor, capacity = get_stress(exf, rain)
 
     delay_evolution = [(0, 0, 0)]
     for i in trange(100000, dynamic_ncols=True, leave=False):
@@ -74,11 +79,7 @@ def sim_all(
         mod.evolve()
         mod.generate(loc_stressor, "beta")
         mod.generate(-capacity, "gamma")
-        mod.conclude_step(
-            exf.trange()[0].to_datetime64(),
-            threshold=0,
-            keep_cascade=False,
-        )
+        mod.conclude_step(exf.trange()[0].to_datetime64(), threshold=0, keep_cascade=False)
 
         delay_evolution.append((i + 1, mod.state.mean(), mod.state.max()))
 
@@ -112,9 +113,7 @@ def sim_all(
         mod.evolve()
         mod.generate(loc_stressor, "beta")
         mod.generate(-capacity, "gamma")
-        mod.conclude_step(
-            exf.trange()[0].to_datetime64(), threshold=0, keep_cascade=False
-        )
+        mod.conclude_step(exf.trange()[0].to_datetime64(), threshold=0, keep_cascade=False)
 
         new_state = mod.state.copy()
         delta = np.abs((new_state - state)).sum()
@@ -139,56 +138,59 @@ def main() -> None:
     global graph_tmp
 
     # build the stressor
-    stressor = exfield_like(
-        base.load_extfield(2024).get(day="2024-01-01"),
-        fill_values=0.03,
-    )
+    stressor = exfield_like(base.load_extfield(2024).get(day="2024-01-01"), fill_values=0.01)
 
     # Params
     params = base.params()
     print(params)
 
-    rain = graph_adj.integrate(
-        stressor, trange=pd.Timestamp("2024-01-01 01:00:00"), ds=1.0
-    )
+    rain = graph_adj.integrate(stressor, trange=pd.Timestamp("2024-01-01 08:00:00"), ds=1.0)
 
     delays = sim_all((stressor, rain, params))
-    if delays is None:
-        return
     print(delays.sort_values("ss"))
     print(delays["ss"].mean())
 
     delays.to_file(base.CACHE / "ext_field_steady_state.geojson")
 
 
-def find_bounds() -> tuple[float, float]:
+def __find_bounds(stressor, rain, params) -> tuple[float, float]:
     """find lower and upper bounds to the region where steady state converge."""
-    print("Computing steady state bounds.")
 
     def opt(s, stressor, capacity, params, stat):
         return stat(params["beta"] * s * stressor - params["gamma"] * capacity)
 
-    stressor = exfield_like(
-        base.load_extfield(2024).get(day="2024-01-01"),
-        fill_values=1,
-    )
-    rain = graph_adj.integrate(
-        stressor, trange=pd.Timestamp("2024-01-01 01:00:00"), ds=1.0
-    )
-
-    params = base.params()
-
-    s, c = get_stress(
-        graph_tmp.subset([("weekday", False), ("month", False), ("hour", 8)]),
-        next(stressor.extreme_events()),
-        stressor.trange()[0],
-        rain,
-    )
+    s, c = get_stress(next(stressor.extreme_events()), rain)
 
     lbound = optimize.fsolve(opt, 0.0005, args=(s, c, params, np.max))[0]
+    ubound = optimize.fsolve(opt, 0.0025, args=(s, c, params, np.sum))[0]
+    return lbound, ubound
+
+
+def find_bounds() -> tuple[float, float]:
+    """find lower and upper bounds to the region where steady state converge."""
+    print("Computing steady state bounds.")
+    stressor = exfield_like(base.load_extfield(2024).get(day="2024-01-01"), fill_values=1)
+    rain = graph_adj.integrate(stressor, trange=pd.Timestamp("2024-01-01 08:00:00"), ds=1.0)
+    params = base.params(df="ci")
+
+    lbound, ubound = __find_bounds(stressor, rain, params["stats"].to_dict())
+    res = {"upper": ubound, "lower": lbound, "low": {}, "high": {}}
     print(f"Lower bound: {lbound}")
-    ubound = optimize.fsolve(opt, 0.0035, args=(s, c, params, np.sum))[0]
     print(f"Upper bound: {ubound}")
+
+    l, u = [], []
+    for name, pars in base.params(df="kfold").iterrows():
+        print(name)
+        _l, _u = __find_bounds(stressor, rain, pars)
+        l.append(_l)
+        u.append(_u)
+    res["low"] = {"upper": min(u), "lower": min(l)}
+    res["high"] = {"upper": max(u), "lower": max(l)}
+    print(f"bound: {res['low']}")
+    print(f"bound: {res['high']}")
+
+    with open("./data/ext_field_steady_state_bounds.json", "wt") as fout:
+        json.dump(res, fout)
 
     return lbound, ubound
 
@@ -201,37 +203,12 @@ def find_critical_value():
     params = base.params()
     print(params)
 
-    stressor = exfield_like(
-        base.load_extfield(2024).get(day="2024-01-01"),
-        fill_values=1,
-    )
-    rain = graph_adj.integrate(
-        stressor, trange=pd.Timestamp("2024-01-01 01:00:00"), ds=1.0
-    )
+    stressor = exfield_like(base.load_extfield(2024).get(day="2024-01-01"), fill_values=1)
+    rain = graph_adj.integrate(stressor, trange=pd.Timestamp("2024-01-01 08:00:00"), ds=1.0)
     print(rain)
 
-    for s in [
-        0.001,
-        0.0025,
-        0.00254,
-        0.00255,
-        0.01,
-        0.03,
-        0.034,
-        0.035,
-        0.04,
-        0.041,
-        0.042,
-        0.05,
-    ]:
-        fname = (
-            base.CACHE
-            / f"ext_field_steady_state_criticalpoint_dynamics_{s:5.6f}.csv.gz"
-        )
-        sim_all((stressor * s, rain * s, params), fname=fname)
-
     res = []
-    for s in np.linspace(0, 0.04, 81):
+    for s in np.linspace(0, 0.03, 151):
         _res = {"stressor": s}
 
         delays = sim_all((stressor * s, rain * s, params))
