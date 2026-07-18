@@ -77,9 +77,7 @@ class Cascade:
     def to_json(self) -> dict[str, Any]:
         """Convert to JSON serializable types."""
         return {
-            "time": np.datetime_as_string(self.time).tolist()
-            if self.time is not None
-            else None,
+            "time": np.datetime_as_string(self.time).tolist() if self.time is not None else None,
             "failing_0": self.failing_0,
             "failing_1": self.failing_1,
             "gcc": self.gcc,
@@ -92,12 +90,10 @@ class Cascade:
 
         return pd.DataFrame(
             [
-                {"node": node, "failing": i}
-                if isinstance(node, str)
-                else node | {"failing": i}
+                {"node": node, "failing": i} if isinstance(node, str) else node | {"failing": i}
                 for i, failing in enumerate([self.failing_0, self.failing_1])
                 for node in failing
-            ],
+            ]
         )
 
     def _failing_is_dict_(self) -> bool:
@@ -197,10 +193,7 @@ class Model(metaclass=PostInitCaller):
     """
 
     def __init__(
-        self,
-        graph: diffsys.Graph,
-        ex_field: diffsys.ExternalField,
-        **kwargs: str | float,
+        self, graph: diffsys.Graph, ex_field: diffsys.ExternalField, **kwargs: str | float
     ) -> None:
         """Initialize the Model.
 
@@ -238,8 +231,7 @@ class Model(metaclass=PostInitCaller):
         """Redefine this method to fix parameters or set default values."""
 
     def graph_filter(
-        self,
-        filter_func: Callable[[np.datetime64, geopd.GeoDataFrame], geopd.GeoDataFrame],
+        self, filter_func: Callable[[np.datetime64, geopd.GeoDataFrame], geopd.GeoDataFrame]
     ) -> None:
         """Add a filtering function to the Model.
 
@@ -281,8 +273,7 @@ class Model(metaclass=PostInitCaller):
     def to_json(self) -> dict:
         """Return a json representation of the results and the parameters."""
         return {
-            "parameters": self._params
-            | {"num_nodes": self.graph.nn, "num_edges": self.graph.ne},
+            "parameters": self._params | {"num_nodes": self.graph.nn, "num_edges": self.graph.ne},
             "events": [res.to_json() for res in self._results if len(res) > 0],
         }
 
@@ -355,15 +346,9 @@ class Diffusion(Model):
             self._cache["transition"] = transition
 
         if float(self._params["alpha"]) > 0.0:
-            self._state = np.asarray(
-                float(self._params["alpha"]) * transition @ self._state
-            )
+            self._state = np.asarray(float(self._params["alpha"]) * transition @ self._state)
 
-    def generate(
-        self,
-        node_gen: np.ndarray | float,
-        param: str | float = 1.0,
-    ) -> None:
+    def generate(self, node_gen: np.ndarray | float, param: str | float = 1.0) -> None:
         r"""Generate or degrade walkers.
 
         This step should not depend on the actual state.
@@ -423,10 +408,7 @@ class Diffusion(Model):
         return edge_weight
 
     def conclude_step(
-        self,
-        time: np.datetime64,
-        threshold: float = 0,
-        keep_cascade: bool | None = None,
+        self, time: np.datetime64, threshold: float = 0, keep_cascade: bool | None = None
     ) -> None:
         """Update cascade with newly affected nodes."""
         # clip negative occupancy!
@@ -441,7 +423,7 @@ class Diffusion(Model):
                     }
                     for i, val in enumerate(self._state)
                     if val > threshold
-                ],
+                ]
             )
 
     @property

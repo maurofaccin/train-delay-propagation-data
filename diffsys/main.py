@@ -23,17 +23,14 @@ if TYPE_CHECKING:
 
 _LINK_SIMB = {"auto": "↺ ", "dir": "->", "sym": "<->"}
 _LINK_RE = {k: re.compile(v) for k, v in _LINK_SIMB.items()}
+EMPTY_GEODATAFRAME = geopd.GeoDataFrame({})
 
 
 class Link:
     """A class to manage the link."""
 
     def __init__(
-        self,
-        source: Hashable,
-        target: Hashable,
-        *args: Iterable,
-        directed: bool = False,
+        self, source: Hashable, target: Hashable, *args: Iterable, directed: bool = False
     ) -> None:
         """Initialize the class.
 
@@ -103,8 +100,7 @@ class Link:
         """Infer from a string."""
         if string.endswith(_LINK_SIMB["auto"]):
             return Link(
-                string.removesuffix(_LINK_SIMB["auto"]),
-                string.removesuffix(_LINK_SIMB["auto"]),
+                string.removesuffix(_LINK_SIMB["auto"]), string.removesuffix(_LINK_SIMB["auto"])
             )
 
         splitted = _LINK_RE["sym"].split(string, maxsplit=1)
@@ -141,8 +137,8 @@ class Graph:
 
     def __init__(
         self,
-        nodes: geopd.GeoDataFrame,
-        edges: geopd.GeoDataFrame,
+        nodes: geopd.GeoDataFrame = EMPTY_GEODATAFRAME,
+        edges: geopd.GeoDataFrame = EMPTY_GEODATAFRAME,
         directed: bool | None = None,
         edge_cols: list[str] | None = None,
     ) -> None:
@@ -182,11 +178,9 @@ class Graph:
             geopd.GeoDataFrame(
                 edges.rename(
                     {
-                        old_indx: Link(
-                            *[edge_data.loc[col] for col in self._ec], directed=directed
-                        )
+                        old_indx: Link(*[edge_data.loc[col] for col in self._ec], directed=directed)
                         for old_indx, edge_data in edges.iterrows()
-                    },
+                    }
                 ),
                 geometry="geometry",
                 crs="4326",
@@ -199,6 +193,14 @@ class Graph:
         # Here we save the neighbors of nodes and edges for easier lookup
         self._node_successors: dict[Hashable, set[Hashable]] = {}
         self._node_predecessors: dict[Hashable, set[Hashable]] = {}
+
+    @classmethod
+    def empty(cls) -> Graph:
+        """Construct an empty graph."""
+        return cls(
+            geopd.GeoDataFrame({"geometry": []}),
+            geopd.GeoDataFrame({"source": [], "target": [], "geometry": []}),
+        )
 
     def subset(self, filters: list[tuple]) -> Graph:
         """Return a subset of graph.
@@ -224,16 +226,12 @@ class Graph:
 
         return Graph(
             self.nodes(),
-            geopd.GeoDataFrame(
-                edges, geometry="geometry"
-            ),  # Force to be of time `GeoDataFrame`
+            geopd.GeoDataFrame(edges, geometry="geometry"),  # Force to be of time `GeoDataFrame`
             directed=self._directed,
             edge_cols=self._ec,
         )
 
-    def filter(
-        self, filter_func: Callable[[geopd.GeoDataFrame], geopd.GeoDataFrame]
-    ) -> Graph:
+    def filter(self, filter_func: Callable[[geopd.GeoDataFrame], geopd.GeoDataFrame]) -> Graph:
         """Filter the edges based on a function.
 
         Parameters
@@ -251,10 +249,7 @@ class Graph:
 
         """
         return Graph(
-            self._nodes,
-            filter_func(self._edges),
-            directed=self._directed,
-            edge_cols=self._ec,
+            self._nodes, filter_func(self._edges), directed=self._directed, edge_cols=self._ec
         )
 
     def _compute_node_neighbors(self) -> None:
@@ -339,10 +334,7 @@ class Graph:
         """Return the adjacency matrix as sparce array."""
         max_index = self.nodes().index.max() + 1
         adj = sparse.csr_matrix(
-            (
-                np.ones(shape=(len(self.edges()),)),
-                (self.edges().source, self.edges().target),
-            ),
+            (np.ones(shape=(len(self.edges()),)), (self.edges().source, self.edges().target)),
             shape=(max_index, max_index),
         )
 
@@ -373,12 +365,8 @@ class Graph:
             components = nx.connected_components(new_nx_graph)
             return max(list(map(len, components)))
 
-        new_nx_graph.remove_nodes_from(
-            [x for x in removed_nodes_edges if not isinstance(x, Link)]
-        )
-        new_nx_graph.remove_edges_from(
-            [x for x in removed_nodes_edges if isinstance(x, Link)]
-        )
+        new_nx_graph.remove_nodes_from([x for x in removed_nodes_edges if not isinstance(x, Link)])
+        new_nx_graph.remove_edges_from([x for x in removed_nodes_edges if isinstance(x, Link)])
 
         if new_nx_graph.number_of_nodes() == 0 or new_nx_graph.number_of_edges() == 0:
             return 0
@@ -387,9 +375,7 @@ class Graph:
         return max(list(map(len, components)))
 
     @classmethod
-    def read_topology(
-        cls, path_nodelist: str, path_edgelist: str, directed: bool = False
-    ) -> Graph:
+    def read_topology(cls, path_nodelist: str, path_edgelist: str, directed: bool = False) -> Graph:
         """Read topology from files  (edgelist and nodelist).
 
         Parameters
@@ -416,9 +402,7 @@ class Graph:
         # First column is label
         # second and third is lon/lat
         df_nodes = (
-            pd.read_csv(
-                path_nodelist, sep=" ", dtype={0: str, 1: float, 2: float}, header=None
-            )
+            pd.read_csv(path_nodelist, sep=" ", dtype={0: str, 1: float, 2: float}, header=None)
             .rename({0: "label", 1: "lon", 2: "lat"}, axis=1)
             .set_index("label", drop=True)
         )
@@ -429,20 +413,14 @@ class Graph:
 
         # Load edges
         # first and second columns are the node labels
-        df_edges = pd.read_csv(
-            path_edgelist, sep=" ", header=None, dtype={0: str, 1: str}
-        ).rename(
-            {0: "source", 1: "target"},
-            axis=1,
+        df_edges = pd.read_csv(path_edgelist, sep=" ", header=None, dtype={0: str, 1: str}).rename(
+            {0: "source", 1: "target"}, axis=1
         )
         gdf_edges = geopd.GeoDataFrame(
             df_edges,
             geometry=[
                 LineString(
-                    [
-                        gdf_nodes.loc[edge.source]["geometry"],
-                        gdf_nodes.loc[edge.target]["geometry"],
-                    ],
+                    [gdf_nodes.loc[edge.source]["geometry"], gdf_nodes.loc[edge.target]["geometry"]]
                 )
                 for _, edge in df_edges.iterrows()
             ],
@@ -490,16 +468,10 @@ class Graph:
         ).drop(columns=[longitude, latitude])
 
         geo_edges = geopd.GeoDataFrame(
-            [
-                data | {"source": n1, "target": n2}
-                for n1, n2, data in network.edges.data()
-            ],
+            [data | {"source": n1, "target": n2} for n1, n2, data in network.edges.data()],
             geometry=[
                 shapely.geometry.LineString(
-                    [
-                        geo_nodes["geometry"].loc[source],
-                        geo_nodes["geometry"].loc[target],
-                    ],
+                    [geo_nodes["geometry"].loc[source], geo_nodes["geometry"].loc[target]]
                 )
                 for source, target, data in network.edges.data()
             ],
@@ -525,22 +497,18 @@ class Graph:
                     | dict(zip("xyz", node["geometry"]["coordinates"], strict=False)),
                 )
                 for node in self._nodes.iterfeatures()
-            ],
+            ]
         )
         graph.add_edges_from(
             [
                 (edge.source, edge.target, edge_data)
-                for edge, edge_data in self._edges.drop(
-                    columns=["geometry"] + self._ec,
-                ).iterrows()
-            ],
+                for edge, edge_data in self._edges.drop(columns=["geometry"] + self._ec).iterrows()
+            ]
         )
         return graph
 
     def to_matrix(
-        self,
-        weight: str | pd.Series | float = 1.0,
-        normalize: bool | None = None,
+        self, weight: str | pd.Series | float = 1.0, normalize: bool | None = None
     ) -> sparse.csr_array:
         """Tranform to a sparse matrix.
 
@@ -590,9 +558,7 @@ class Graph:
             spm = preprocessing.normalize(spm, norm="l1", axis=0)
         return spm.tocsr()
 
-    def to_array(
-        self, weight: str | None = None, normalize: bool | None = None
-    ) -> np.ndarray:
+    def to_array(self, weight: str | None = None, normalize: bool | None = None) -> np.ndarray:
         """Put nodes metadata in a vector. Possibly normalize."""
         arr = np.ones(len(self)) if weight is None else self._nodes[weight].to_numpy()
         if normalize is True:
@@ -621,9 +587,7 @@ class Graph:
             objects = tqdm(edges) if verbose else edges
             return pd.Series(
                 [
-                    ex_field.path_integral(
-                        p, date_lims=dlim, ds=ds, crs=self._edges.crs
-                    )
+                    ex_field.path_integral(p, date_lims=dlim, ds=ds, crs=self._edges.crs)
                     for p in objects
                 ],
                 index=self._edges.index,
@@ -643,9 +607,7 @@ class Graph:
         msg = f"Not implemented integration `{kind}`, use `edges` or `nodes`"
         raise NotImplementedError(msg)
 
-    def to_laplacian(
-        self, kind: str = "RW", weight: str | float = 1.0
-    ) -> sparse.spmatrix:
+    def to_laplacian(self, kind: str = "RW", weight: str | float = 1.0) -> sparse.spmatrix:
         """Return the laplacian."""
         if kind == "RW":
             return sparse.eye(self.nn) - self.to_matrix(weight=weight, normalize=True)
@@ -715,6 +677,17 @@ class ExternalField:
         # reoder coordinates such that time is first
         self._data: xarray.DataArray = data.transpose("time", ...)
 
+    @classmethod
+    def empty(cls) -> ExternalField:
+        """Construct an empty ExternalField."""
+        return cls(
+            xarray.DataArray(
+                np.zeros((0, 0, 0)),
+                dims=["time", "longitude", "latitude"],
+                coords={"time": [], "longitude": [], "latitude": []},
+            )
+        )
+
     def get(self, day: str | pd.Timestamp | None = None) -> ExternalField:
         """Filter data."""
         if day is None:
@@ -767,9 +740,7 @@ class ExternalField:
         return tuple(pd.Timestamp(x) for x in self.data.time.to_numpy()[[0, -1]])
 
     def extreme_events(
-        self,
-        kind: str = "simple",
-        threshold: float = 0.1,
+        self, kind: str = "simple", threshold: float = 0.1
     ) -> Generator[ExternalField]:
         """Find connected blobs in the climate tensor.
 
@@ -809,7 +780,7 @@ class ExternalField:
                         self._data.sel(time=time, drop=True)
                         .assign_attrs(time=time)
                         .expand_dims(dim={"time": [time]}, axis=2)
-                        .fillna(0),
+                        .fillna(0)
                     )
                 )
 
@@ -818,9 +789,7 @@ class ExternalField:
                 yield ExternalField(day)
 
         elif kind == "blob":
-            labels, num_labels = ndimage.label(
-                (self._data.fillna(0) > threshold).astype(int)
-            )
+            labels, num_labels = ndimage.label((self._data.fillna(0) > threshold).astype(int))
             indxes = ndimage.value_indices(labels)
             del indxes[0]
 
@@ -832,11 +801,9 @@ class ExternalField:
                 new_indx = indx[0] - np.min(indx[0])
                 this_blob = np.zeros(
                     # Time, longitude, and latitude indices should be consecutive
-                    (len(set(indx[0])), self._data.shape[1], self._data.shape[2]),
+                    (len(set(indx[0])), self._data.shape[1], self._data.shape[2])
                 )
-                this_blob[new_indx, indx[1], indx[2]] = self._data.data[
-                    indx[0], indx[1], indx[2]
-                ]
+                this_blob[new_indx, indx[1], indx[2]] = self._data.data[indx[0], indx[1], indx[2]]
 
                 yield ExternalField(
                     xarray.DataArray(
@@ -848,26 +815,18 @@ class ExternalField:
                         },
                         dims=["time", "longitude", "latitude"],
                         attrs={"time": time_coords[0].data},
-                    ),
+                    )
                 )
 
         else:
             raise NotImplementedError("Not `simple` neither `blob` but " + str(kind))
 
-    def get_point(
-        self, point: Point, timepoint: pd.Timestamp | None = None
-    ) -> xarray.DataArray:
+    def get_point(self, point: Point, timepoint: pd.Timestamp | None = None) -> xarray.DataArray:
         """Get the probability of failure of a `shapely.geometry.Point`."""
         if timepoint is None:
-            return self._data.sel(
-                longitude=point.x, latitude=point.y, method="nearest", drop=True
-            )
+            return self._data.sel(longitude=point.x, latitude=point.y, method="nearest", drop=True)
         return self._data.sel(
-            longitude=point.x,
-            latitude=point.y,
-            time=timepoint,
-            method="nearest",
-            drop=True,
+            longitude=point.x, latitude=point.y, time=timepoint, method="nearest", drop=True
         ).data.tolist()
 
     def get_line(self, line: LineString) -> xarray.DataArray:
@@ -887,20 +846,14 @@ class ExternalField:
 
         # failing probability time x cells
         probs = np.diagonal(
-            self._data.sel(
-                longitude=xy[0].to_numpy(), latitude=xy[1].to_numpy(), drop=True
-            ),
+            self._data.sel(longitude=xy[0].to_numpy(), latitude=xy[1].to_numpy(), drop=True),
             axis1=1,  # longitude
             axis2=2,  # latitude
         )
         # probs are computed as 1 - (1-p1)(1-p2)(1-p3)…
         probs = 1 - (1 - probs).prod(axis=1)
 
-        return xarray.DataArray(
-            probs,
-            dims=["time"],
-            coords={"time": self._data.time},
-        )
+        return xarray.DataArray(probs, dims=["time"], coords={"time": self._data.time})
 
     def path_integral(self, line: LineString, **kwargs) -> float:
         r"""Path integral of the External Field along the Line.
@@ -960,16 +913,11 @@ class ExternalField:
         # The problem here is that we are bound to the user `crs`
         # which may not provide exactly the same distance between interpolated points.
         n_segments = int(line.length / ds) + 1
-        points = [
-            line.interpolate(dist)
-            for dist in np.linspace(0, line.length, n_segments + 1)
-        ]
+        points = [line.interpolate(dist) for dist in np.linspace(0, line.length, n_segments + 1)]
         dates = pd.date_range(date_lims[0], date_lims[1], periods=len(points))
 
         # compute the distance in Km
-        km_transf = Transformer.from_crs(
-            crs_from=crs, crs_to="EPSG:3857", always_xy=True
-        )
+        km_transf = Transformer.from_crs(crs_from=crs, crs_to="EPSG:3857", always_xy=True)
         line_transf = ops.transform(km_transf.transform, line)
         # WARN: this is not the best since each little piece length
         #       is still computed as Euclidean distance.
