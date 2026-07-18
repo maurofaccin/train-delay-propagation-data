@@ -24,9 +24,7 @@ def load_rain(dataset: Literal["train", "test"] = "train") -> pd.DataFrame:
     return pd.concat(
         [
             resample(fl)
-            for fl in Path("stats/rain_cache").glob(
-                "*202[123]*" if dataset == "train" else "*2024*"
-            )
+            for fl in Path("data/rain_cache").glob("*202[123]*" if dataset == "train" else "*2024*")
         ]
     ).sort_index()
 

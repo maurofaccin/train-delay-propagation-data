@@ -75,18 +75,33 @@ The following is the structure of the code:
 ```
 .
 ├── base.py
-├── code_coverage_plot.py
 ├── code_coverage.py
+├── code_coverage_plot.py
+├── code_delay_rain_corr.py
+├── code_fit_params.py
+├── code_fit_params_regression.py
+├── code_fit_params_validate_errorbars.py
 ├── code_steady_state_plot.py
 ├── code_steady_state.py
 ├── code_validation.py
 ├── data
-│   └── ...
+│   ├── aggregate_transitions_learn_ita.csv.gz
+│   ├── delays_per_stations_2020.csv.gz
+│   ├── delays_per_stations_2021.csv.gz
+│   ├── delays_per_stations_2022.csv.gz
+│   ├── delays_per_stations_2023.csv.gz
+│   ├── delays_per_stations_2024.csv.gz
+│   ├── ext_field_steady_state_bounds.json
+│   ├── graph_edges.geojson
+│   ├── graph_nodes_metadata.geojson
+│   ├── ITA_regions.geojson
+│   └── rainy_peaks.csv.gz
 ├── diffsys
 │   ├── __init__.py
 │   ├── main.py
 │   ├── models.py
 │   └── utils.py
+├── LICENSE
 ├── pyproject.toml
 ├── README.md
 └── uv.lock
@@ -104,13 +119,21 @@ To run each script you can run it with the following command:
 uv run scriptname.py
 ```
 
+### Model fit
+
+First of all fit the parameters alpha beta and gamma
+
+```
+uv run code_fit_params.py
+```
 
 ### Model validation
 
 Usage:
 
 ```
-uv run code_validation.py
+uv run code_fit_params_regression.py
+uv run code_fit_params_validate_errorbars.py
 ```
 
 Warnings: it will take approx a couple of hours in a 10 cores 16 GB RAM laptop.
