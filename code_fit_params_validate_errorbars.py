@@ -73,7 +73,7 @@ class Delays:
         self.peaks = base.load_peaks(2024, kind="full") * 1000
 
         # Load real delays
-        self.real_delay = base.load_real_delay(2024) / 60
+        self.real_delay = base.load_real_delay([2021, 2022, 2023]) / 60
         self.baseline = self.real_delay.median().sort_index()
 
         delays = {
